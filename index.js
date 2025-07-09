@@ -1,7 +1,7 @@
 // Basic Setup
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 
 const app = express();
@@ -28,7 +28,7 @@ async function run() {
     // Database & Collection
     const db = client.db("surplusShareDB");
     const userCollection = db.collection("users");
-
+    const donationsCollection = db.collection("donations");
 
     // ✅ POST /api/users
     app.post("/users", async (req, res) => {
@@ -54,6 +54,22 @@ async function run() {
       const result = await userCollection.updateOne(filter, update, options);
       res.send(result);
     });
+    // *************************************all donation collection api*****************************************//
+    // get the all donations data
+    app.get("/donations", async (req, res) => {
+      const result = await donationsCollection.find().toArray();
+      res.send(result);
+    });
+    // get single donation data
+    app.get("/donations/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await donationsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
+
+    
 
     // 🟡 Root Route
     app.get("/", (req, res) => {
