@@ -30,6 +30,9 @@ async function run() {
     const userCollection = db.collection("users");
     const donationsCollection = db.collection("donations");
     const favoritesCollection = db.collection("favorites");
+    const donationRequestsCollection = db.collection("donationReq");
+    const reviewsCollection = db.collection("reviews");
+
 
     // ✅ POST /api/users
     app.post("/users", async (req, res) => {
@@ -73,7 +76,7 @@ async function run() {
     // post favorites donation
     app.post("/favorites", async (req, res) => {
       const { donationId, userEmail } = req.body;
-      console.log(donationId,userEmail);
+      console.log(donationId, userEmail);
 
       if (!donationId || !userEmail) {
         return res.status(400).send({ error: "Missing data" });
@@ -96,6 +99,68 @@ async function run() {
       const result = await favoritesCollection.insertOne(doc);
       res.send(result);
     });
+
+    // request for donation
+    app.post("/donation-requests", async (req, res) => {
+      const { donationId, pickupTime, description, charityName, charityEmail } =
+        req.body;
+
+      if (
+        !donationId ||
+        !pickupTime ||
+        !description ||
+        !charityName ||
+        !charityEmail
+      ) {
+        return res.status(400).send({ error: "Missing required fields" });
+      }
+
+      const request = {
+        donationId: new ObjectId(donationId),
+        pickupTime,
+        description,
+        charityName,
+        charityEmail,
+        status: "Pending",
+        requestedAt: new Date(),
+      };
+
+      const requestResult = await donationRequestsCollection.insertOne(request);
+
+      await donationsCollection.updateOne(
+        { _id: new ObjectId(donationId) },
+        { $set: { status: "Requested", charityName } }
+      );
+
+      res.send(requestResult);
+    });
+
+
+app.post("/donations/:id/reviews", async (req, res) => {
+  const { id } = req.params;
+  const { reviewer, description, rating } = req.body;
+
+  if (!reviewer || !description || !rating) {
+    return res.status(400).send({ error: "Missing fields" });
+  }
+
+  const review = {
+    donationId: new ObjectId(id),
+    reviewer,
+    description,
+    rating: parseInt(rating),
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    const result = await reviewsCollection.insertOne(review);
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Failed to save review", details: err.message });
+  }
+});
+
+
 
     // 🟡 Root Route
     app.get("/", (req, res) => {
