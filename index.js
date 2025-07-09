@@ -27,16 +27,38 @@ async function run() {
 
     // Database & Collection
     const db = client.db("surplusShareDB");
-    const donationCollection = db.collection("donations");
+    const userCollection = db.collection("users");
 
-    
-    
+
+    // ✅ POST /api/users
+    app.post("/users", async (req, res) => {
+      const { name, email, photoURL, role } = req.body;
+
+      if (!email) {
+        return res.status(400).send({ error: "Email is required" });
+      }
+
+      const filter = { email };
+      const update = {
+        $setOnInsert: {
+          name,
+          photoURL,
+          role: role || "user",
+        },
+        $set: {
+          lastLoginAt: new Date().toISOString(),
+        },
+      };
+
+      const options = { upsert: true };
+      const result = await userCollection.updateOne(filter, update, options);
+      res.send(result);
+    });
 
     // 🟡 Root Route
     app.get("/", (req, res) => {
       res.send("🚀 SurplusShare API is Running (MongoDB Native)");
     });
-
   } catch (error) {
     console.error("❌ Server error:", error);
   }
