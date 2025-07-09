@@ -29,6 +29,7 @@ async function run() {
     const db = client.db("surplusShareDB");
     const userCollection = db.collection("users");
     const donationsCollection = db.collection("donations");
+    const favoritesCollection = db.collection("favorites");
 
     // ✅ POST /api/users
     app.post("/users", async (req, res) => {
@@ -69,7 +70,32 @@ async function run() {
       res.send(result);
     });
 
-    
+    // post favorites donation
+    app.post("/favorites", async (req, res) => {
+      const { donationId, userEmail } = req.body;
+      console.log(donationId,userEmail);
+
+      if (!donationId || !userEmail) {
+        return res.status(400).send({ error: "Missing data" });
+      }
+
+      const existing = await favoritesCollection.findOne({
+        donationId,
+        userEmail,
+      });
+      if (existing) {
+        return res.status(409).send({ message: "Already added" });
+      }
+
+      const doc = {
+        donationId,
+        userEmail,
+        addedAt: new Date().toISOString(),
+      };
+
+      const result = await favoritesCollection.insertOne(doc);
+      res.send(result);
+    });
 
     // 🟡 Root Route
     app.get("/", (req, res) => {
