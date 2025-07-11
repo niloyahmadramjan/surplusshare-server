@@ -12,7 +12,6 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-
 var serviceAccount = require("./surplusshare-bd-firebase-adminsdk.json");
 
 admin.initializeApp({
@@ -191,16 +190,16 @@ async function run() {
     // ✅ POST: Submit a review (prevent duplicate review per user & donation)
     app.post("/donations/:id/reviews", verifyToken, async (req, res) => {
       const { id } = req.params;
-      const { reviewer, description, rating } = req.body;
+      const { rating, description, reviewerName, reviewerInfo } = req.body;
 
-      if (!reviewer || !description || !rating) {
+      if (!reviewerName || !description || !rating) {
         return res.status(400).send({ error: "Missing fields" });
       }
 
       // ❌ Check if user already reviewed
       const existingReview = await reviewsCollection.findOne({
         donationId: new ObjectId(id),
-        reviewer,
+        reviewerName,
       });
 
       if (existingReview) {
@@ -211,7 +210,8 @@ async function run() {
 
       const review = {
         donationId: new ObjectId(id),
-        reviewer,
+        reviewerInfo,
+        reviewerName,
         description,
         rating: parseInt(rating),
         createdAt: new Date().toISOString(),
@@ -301,7 +301,56 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ Root route (health check)
+    /******************************************Favorites**********************************************/
+    app.get("/favorites/:email", async (req, res) => {
+      const { email } = req.params;
+
+      try {
+        const favorites = await favoritesCollection
+          .aggregate([
+            {
+              $match: { userEmail: email },
+            },
+            // 🧠 Convert string donationId → ObjectId
+            {
+              $addFields: {
+                donationId: { $toObjectId: "$donationId" },
+              },
+            },
+            // 🔗 Join with donations collection
+            {
+              $lookup: {
+                from: "donations",
+                localField: "donationId",
+                foreignField: "_id",
+                as: "donation",
+              },
+            },
+            // 🧼 Flatten the joined donation array
+            {
+              $unwind: "$donation",
+            },
+          ])
+          .toArray();
+
+        res.send(favorites);
+      } catch (error) {
+        res
+          .status(500)
+          .send({ error: "Failed to fetch favorites", details: error.message });
+      }
+    });
+
+    // DELETE /favorites/:id
+    app.delete("/favorites/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await favoritesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
+
+    // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
       res.send("🚀 SurplusShare API is Running (MongoDB Native)");
     });
