@@ -297,8 +297,17 @@ async function run() {
 
     app.get("/transactions/:email", async (req, res) => {
       const email = req.params.email;
-      const result = await transactionsCollection.find({ email }).toArray();
-      res.send(result);
+      try {
+        const result = await transactionsCollection
+          .find({ email })
+          .sort({ createdAt: -1 }) // newest first
+          .toArray();
+        res.send(result);
+      } catch (error) {
+        res
+          .status(500)
+          .send({ message: "Failed to fetch transactions", error });
+      }
     });
 
     /******************************************Favorites**********************************************/
@@ -345,6 +354,45 @@ async function run() {
     app.delete("/favorites/:id", async (req, res) => {
       const id = req.params.id;
       const result = await favoritesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
+
+    // GET /reviews/user/:email**************************************************************************
+    app.get("/reviews/user/:email", async (req, res) => {
+      const email = req.params.email;
+      try {
+        const reviews = await reviewsCollection
+          .find({ "reviewerInfo.email": email })
+          .toArray();
+
+        // Join with donation collection
+        const donationIds = reviews.map((r) => new ObjectId(r.donationId));
+        const donations = await donationsCollection
+          .find({ _id: { $in: donationIds } })
+          .toArray();
+
+        const donationsMap = donations.reduce((acc, donation) => {
+          acc[donation._id.toString()] = donation;
+          return acc;
+        }, {});
+
+        const enrichedReviews = reviews.map((review) => ({
+          ...review,
+          donation: donationsMap[review.donationId] || {},
+        }));
+
+        res.send(enrichedReviews);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch reviews", error });
+      }
+    });
+
+    // DELETE /reviews/:id
+    app.delete("/reviews/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await reviewsCollection.deleteOne({
         _id: new ObjectId(id),
       });
       res.send(result);
