@@ -398,40 +398,105 @@ async function run() {
       res.send(result);
     });
 
-/**************************************Restorent role****************************************************/
+    /**************************************Restorent role****************************************************/
 
     app.post("/donations", async (req, res) => {
-  try {
-    const donation = req.body;
+      try {
+        const donation = req.body;
 
-    // Basic validation
-    const requiredFields = [
-      "title",
-      "description",
-      "imageUrl",
-      "restaurantName",
-      "restaurantEmail",
-      "location",
-      "quantity",
-      "pickupTime"
-    ];
-    const missing = requiredFields.filter((f) => !donation[f]);
-    if (missing.length > 0) {
-      return res.status(400).send({ message: `Missing fields: ${missing.join(", ")}` });
-    }
+        // Basic validation
+        const requiredFields = [
+          "title",
+          "description",
+          "imageUrl",
+          "restaurantName",
+          "restaurantEmail",
+          "location",
+          "quantity",
+          "pickupTime",
+        ];
+        const missing = requiredFields.filter((f) => !donation[f]);
+        if (missing.length > 0) {
+          return res
+            .status(400)
+            .send({ message: `Missing fields: ${missing.join(", ")}` });
+        }
 
-    donation.status = "Pending";
-    donation.createdAt = new Date().toISOString();
+        donation.status = "Pending";
+        donation.createdAt = new Date().toISOString();
 
-    const result = await donationsCollection.insertOne(donation);
-    res.send({ success: true, insertedId: result.insertedId });
-  } catch (error) {
-    res.status(500).send({ success: false, message: "Failed to add donation", error });
-  }
-});
+        const result = await donationsCollection.insertOne(donation);
+        res.send({ success: true, insertedId: result.insertedId });
+      } catch (error) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to add donation", error });
+      }
+    });
 
+    // get my donations
 
+    app.get("/my-donations", async (req, res) => {
+      try {
+        const email = req.query.email;
+        const query = email ? { restaurantEmail: email } : {};
+        const result = await donationsCollection.find(query).toArray();
+        res.send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ message: "Failed to fetch donations", error: err });
+      }
+    });
 
+    // update my donation
+    app.patch("/my-donations/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateData = { ...req.body };
+      delete updateData._id;
+      try {
+        const result = await donationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, message: "Donation updated successfully" });
+        } else {
+          res.send({ success: false, message: "No fields were updated" });
+        }
+      } catch (error) {
+        res
+          .status(500)
+          .send({
+            success: false,
+            message: "Update failed",
+            error: error.message,
+          });
+      }
+    });
+
+    // delete my donation
+
+    app.delete("/donations/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await donationsCollection.deleteOne(query);
+
+        if (result.deletedCount === 1) {
+          res.send({ success: true, message: "Donation deleted" });
+        } else {
+          res
+            .status(404)
+            .send({ success: false, message: "Donation not found" });
+        }
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Delete failed", error: err });
+      }
+    });
 
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
