@@ -466,13 +466,11 @@ async function run() {
           res.send({ success: false, message: "No fields were updated" });
         }
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            success: false,
-            message: "Update failed",
-            error: error.message,
-          });
+        res.status(500).send({
+          success: false,
+          message: "Update failed",
+          error: error.message,
+        });
       }
     });
 
@@ -495,6 +493,100 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Delete failed", error: err });
+      }
+    });
+
+   app.get("/charity-requests", async (req, res) => {
+  try {
+    const restaurantEmail = req.query.restaurantEmail;
+    console.log("restaurantEmail:", restaurantEmail);
+
+    // Step 1: Get all donations from this restaurant
+    const donations = await donationsCollection
+      .find({ restaurantEmail })
+      .toArray();
+
+    if (!donations.length) {
+      return res.send([]); // No donations found
+    }
+
+    // Step 2: Extract all donation _ids as ObjectIds
+    const donationIds = donations.map((d) => new ObjectId(d._id));
+
+    // Step 3: Aggregate matching charity requests + lookup donation
+    const requests = await donationRequestsCollection
+      .aggregate([
+        {
+          $match: {
+            donationId: { $in: donationIds },
+          },
+        },
+        {
+          $lookup: {
+            from: "donations",
+            localField: "donationId",
+            foreignField: "_id",
+            as: "donation",
+          },
+        },
+        { $unwind: "$donation" },
+
+        // ✅ Step 4: Sort by `requestedAt` field (oldest first)
+        {
+          $sort: {
+            requestedAt: 1, // Ascending: 1 = oldest first, -1 = newest first
+          },
+        },
+      ])
+      .toArray();
+
+    res.send(requests);
+  } catch (error) {
+    console.error("Error fetching charity requests:", error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
+
+    // donation request accept and reject
+    app.patch("/donation-requests/status/:id", async (req, res) => {
+      try {
+        const requestId = req.params.id;
+        const { status } = req.body;
+
+        if (!["Accepted", "Rejected"].includes(status)) {
+          return res.status(400).send({ error: "Invalid status" });
+        }
+
+        const currentRequest = await donationRequestsCollection.findOne({
+          _id: new ObjectId(requestId),
+        });
+
+        if (!currentRequest) {
+          return res.status(404).send({ error: "Request not found" });
+        }
+
+        // Step 1: Update the selected request's status
+        await donationRequestsCollection.updateOne(
+          { _id: new ObjectId(requestId) },
+          { $set: { status } }
+        );
+
+        // Step 2: If accepted, reject all others for the same donation
+        if (status === "Accepted") {
+          await donationRequestsCollection.updateMany(
+            {
+              donationId: currentRequest.donationId,
+              _id: { $ne: new ObjectId(requestId) },
+            },
+            { $set: { status: "Rejected" } }
+          );
+        }
+
+        res.send({ message: `Request ${status.toLowerCase()} successfully.` });
+      } catch (error) {
+        console.error("Status change error:", error);
+        res.status(500).send({ error: "Internal Server Error" });
       }
     });
 
