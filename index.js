@@ -398,6 +398,41 @@ async function run() {
       res.send(result);
     });
 
+/**************************************Restorent role****************************************************/
+
+    app.post("/donations", async (req, res) => {
+  try {
+    const donation = req.body;
+
+    // Basic validation
+    const requiredFields = [
+      "title",
+      "description",
+      "imageUrl",
+      "restaurantName",
+      "restaurantEmail",
+      "location",
+      "quantity",
+      "pickupTime"
+    ];
+    const missing = requiredFields.filter((f) => !donation[f]);
+    if (missing.length > 0) {
+      return res.status(400).send({ message: `Missing fields: ${missing.join(", ")}` });
+    }
+
+    donation.status = "Pending";
+    donation.createdAt = new Date().toISOString();
+
+    const result = await donationsCollection.insertOne(donation);
+    res.send({ success: true, insertedId: result.insertedId });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Failed to add donation", error });
+  }
+});
+
+
+
+
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
       res.send("🚀 SurplusShare API is Running (MongoDB Native)");
