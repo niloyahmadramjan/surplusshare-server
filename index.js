@@ -670,6 +670,90 @@ app.delete("/donation-requests/:id", async (req, res) => {
 });
 
 
+// get the donation request pickups 
+app.get("/donation-requests/pickups/:email", async (req, res) => {
+  const email = req.params.email;
+
+  try {
+    const pickups = await donationRequestsCollection.aggregate([
+      {
+        $match: {
+          charityEmail: email,
+          status: "Accepted",
+        },
+      },
+      {
+        $addFields: {
+          donationId: { $toObjectId: "$donationId" },
+        },
+      },
+      {
+        $lookup: {
+          from: "donations",
+          localField: "donationId",
+          foreignField: "_id",
+          as: "donation",
+        },
+      },
+      {
+        $unwind: "$donation",
+      },
+      {
+        $project: {
+          _id: 1,
+          status: 1,
+          pickupTime: 1,
+          donationTitle: "$donation.title",
+          foodType: "$donation.foodType",
+          restaurantName: "$donation.restaurantName",
+          quantity: "$donation.quantity",
+          location: "$donation.location",
+        },
+      },
+    ]).toArray();
+
+    res.send(pickups);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch pickups", message: error.message });
+  }
+});
+
+
+// change the status to confirm pickup
+app.patch("/donation-requests/confirm-pickup/:id", async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const request = await donationRequestsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!request) {
+      return res.status(404).send({ error: "Request not found" });
+    }
+
+    if (request.status !== "Accepted") {
+      return res.status(400).send({ error: "Only accepted requests can be confirmed" });
+    }
+
+    // ✅ Update request status
+    await donationRequestsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: "Picked Up" } }
+    );
+
+    // ✅ Also update donation status
+    await donationsCollection.updateOne(
+      { _id: new ObjectId(request.donationId) },
+      { $set: { status: "Picked Up" } }
+    );
+
+    res.send({ message: "Pickup confirmed" });
+  } catch (error) {
+    res.status(500).send({ error: "Failed to confirm pickup", message: error.message });
+  }
+});
+
+
+
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
       res.send("🚀 SurplusShare API is Running (MongoDB Native)");
