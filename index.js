@@ -272,6 +272,7 @@ async function run() {
         amount,
         transactionId,
         purpose,
+        status: "success",
         date: new Date(),
       };
 
@@ -591,6 +592,17 @@ async function run() {
     });
 
     /**********************************Charity role***********************************************************************/ 
+
+    // GET /charity-requests/user/:email
+app.get("/charity-requests/user/:email", async (req, res) => {
+  const email = req.params.email;
+  console.log("user email: ",email)
+  const result = await charityRoleReqCollection.findOne({ email });
+  res.send(result || {});
+});
+
+
+
     app.get("/donation-requests/by-charity/:email", async (req, res) => {
   const email = req.params.email;
 
@@ -752,6 +764,77 @@ app.patch("/donation-requests/confirm-pickup/:id", async (req, res) => {
   }
 });
 
+
+// get donation request received 
+app.get("/donation-requests/received/:email", async (req, res) => {
+  const email = req.params.email;
+
+  try {
+    const donations = await donationRequestsCollection.aggregate([
+      {
+        $match: {
+          charityEmail: email,
+          status: "Picked Up",
+        },
+      },
+      {
+        $addFields: {
+          donationId: { $toObjectId: "$donationId" },
+        },
+      },
+      {
+        $lookup: {
+          from: "donations",
+          localField: "donationId",
+          foreignField: "_id",
+          as: "donation",
+        },
+      },
+      { $unwind: "$donation" },
+      {
+        $project: {
+          _id: 1,
+          donationId: 1,
+          donationTitle: "$donation.title",
+          restaurantName: "$donation.restaurantName",
+          foodType: "$donation.foodType",
+          quantity: "$donation.quantity",
+          pickupTime: "$pickupTime",
+        },
+      },
+    ]).toArray();
+
+    res.send(donations);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to load received donations", message: error.message });
+  }
+});
+
+
+// post donations reviews
+app.post("/donations/:id/reviews", async (req, res) => {
+  const { id } = req.params;
+  const { reviewer, description, rating } = req.body;
+
+  if (!reviewer || !description || !rating) {
+    return res.status(400).send({ error: "Missing required fields" });
+  }
+
+  const review = {
+    donationId: new ObjectId(id),
+    reviewer, // { name, email, photoURL }
+    description,
+    rating: parseInt(rating),
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    const result = await reviewsCollection.insertOne(review);
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Failed to save review", message: err.message });
+  }
+});
 
 
     // ✅ Root route (health check)*******************************************************************************
