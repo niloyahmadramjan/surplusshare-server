@@ -590,6 +590,86 @@ async function run() {
       }
     });
 
+    /**********************************Charity role***********************************************************************/ 
+    app.get("/donation-requests/by-charity/:email", async (req, res) => {
+  const email = req.params.email;
+
+  try {
+    const requests = await donationRequestsCollection
+      .aggregate([
+        {
+          $match: { charityEmail: email },
+        },
+        {
+          $addFields: {
+            donationId: { $toObjectId: "$donationId" }, // Ensure ObjectId for lookup
+          },
+        },
+        {
+          $lookup: {
+            from: "donations",
+            localField: "donationId",
+            foreignField: "_id",
+            as: "donation",
+          },
+        },
+        {
+          $unwind: "$donation",
+        },
+        {
+          $project: {
+            _id: 1,
+            status: 1,
+            pickupTime: 1,
+            description: 1,
+            requestedAt: 1,
+            donationTitle: "$donation.title",
+            restaurantName: "$donation.restaurantName",
+            foodType: "$donation.foodType",
+            quantity: "$donation.quantity",
+          },
+        },
+      ])
+      .toArray();
+
+    res.send(requests);
+  } catch (err) {
+    res.status(500).send({ error: "Failed to fetch donation requests", message: err.message });
+  }
+});
+
+
+// delete donation request
+app.delete("/donation-requests/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const request = await donationRequestsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!request) {
+      return res.status(404).send({ error: "Request not found" });
+    }
+
+    if (request.status !== "Pending") {
+      return res.status(400).send({ error: "Only pending requests can be canceled" });
+    }
+
+    // Delete the request
+    const result = await donationRequestsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    // Optionally update the donation status back to Available
+    await donationsCollection.updateOne(
+      { _id: new ObjectId(request.donationId) },
+      { $set: { status: "Available" }, $unset: { charityName: "" } }
+    );
+
+    res.send({ message: "Request cancelled", result });
+  } catch (err) {
+    res.status(500).send({ error: "Failed to cancel request", message: err.message });
+  }
+});
+
+
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
       res.send("🚀 SurplusShare API is Running (MongoDB Native)");
