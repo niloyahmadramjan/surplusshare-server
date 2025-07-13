@@ -836,6 +836,36 @@ app.post("/donations/:id/reviews", async (req, res) => {
   }
 });
 
+/**************admin role*****************/
+// get al donations admin
+app.get("/admin/donations", async (req, res) => {
+  try {
+    const result = await donationsCollection.find().toArray();
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Failed to load donations" });
+  }
+});
+
+
+// update status 
+app.patch("/admin/donations/:id", async (req, res) => {
+  const id = req.params.id;
+  const { status } = req.body;
+
+  if (!["Verified", "Rejected"].includes(status)) {
+    return res.status(400).send({ error: "Invalid status" });
+  }
+
+  const result = await donationsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status } }
+  );
+
+  res.send(result);
+});
+
+
 
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
