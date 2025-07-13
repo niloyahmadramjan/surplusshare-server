@@ -61,7 +61,7 @@ async function run() {
 
     // ✅ Save or update user on login/register
     app.post("/users", verifyToken, async (req, res) => {
-      const { name, email, photoURL, role } = req.body;
+      const { name, email, photoURL, role,firebaseUID } = req.body;
 
       if (!email) {
         return res.status(400).send({ error: "Email is required" });
@@ -73,6 +73,7 @@ async function run() {
           name,
           photoURL,
           role: role || "user",
+          firebaseUID
         },
         $set: {
           lastLoginAt: new Date().toISOString(),
@@ -863,6 +864,58 @@ app.patch("/admin/donations/:id", async (req, res) => {
   );
 
   res.send(result);
+});
+
+
+// get all user 
+app.get("/admin/users", async (req, res) => {
+  try {
+    const users = await userCollection.find().toArray();
+    res.send(users);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch users" });
+  }
+});
+
+// update user role 
+app.patch("/admin/users/role/:id", async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  if (!["admin", "restaurant", "charity","user"].includes(role)) {
+    return res.status(400).send({ error: "Invalid role" });
+  }
+
+  try {
+    const result = await userCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role } }
+    );
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to update role" });
+  }
+});
+// delete user form mongodb and firebase
+app.delete("/admin/users/:id", async (req, res) => {
+  const id = req.params.id;
+  const { firebaseUID } = req.query; 
+
+  try {
+    // 1. Delete from MongoDB
+    const mongoResult = await userCollection.deleteOne({ _id: new ObjectId(id) });
+
+    // 2. Delete from Firebase Auth
+    if (firebaseUID) {
+      await admin.auth().deleteUser(firebaseUID);
+    }
+
+    res.send({ success: true, mongoDeleted: mongoResult.deletedCount });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).send({ error: "Failed to delete user" });
+  }
 });
 
 
