@@ -917,6 +917,67 @@ app.delete("/admin/users/:id", async (req, res) => {
     res.status(500).send({ error: "Failed to delete user" });
   }
 });
+// get charity role request 
+app.get("/admin/charity-role-requests", async (req, res) => {
+  try {
+    const requests = await charityRoleReqCollection.find().toArray();
+    res.send(requests);
+  } catch (error) {
+    console.error("Failed to fetch charity role requests:", error);
+    res.status(500).send({ error: "Internal server error" });
+  }
+});
+
+
+// update charity req accept or reject
+app.patch("/admin/charity-role-requests/:id", async (req, res) => {
+  const { id } = req.params;
+  const { email, status } = req.body;
+  console.log("backend data : ", email,status)
+
+  try {
+    // 1. Update the status of the role request
+    const updateRequest = await charityRoleReqCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status } }
+    );
+
+    // 2. If approved, update user's role to "charity"
+    let updateUser = null;
+    if (status === "Approved") {
+      updateUser = await userCollection.updateOne(
+        { email },
+        { $set: { role: "charity" } }
+      );
+    }
+
+    res.send({
+      success: true,
+      updatedRequest: updateRequest.modifiedCount,
+      updatedUser: updateUser?.modifiedCount || 0,
+    });
+  } catch (error) {
+    console.error("Failed to update role request:", error);
+    res.status(500).send({ error: "Internal server error" });
+  }
+});
+
+// delete charity request 
+app.delete("/admin/charity-role-requests/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await charityRoleReqCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send({ success: true, deletedCount: result.deletedCount });
+  } catch (error) {
+    console.error("Failed to delete role request:", error);
+    res.status(500).send({ error: "Failed to delete role request" });
+  }
+});
+
 
 
 
