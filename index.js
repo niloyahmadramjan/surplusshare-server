@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const admin = require("firebase-admin");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const rateLimit = require("express-rate-limit");
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -12,31 +13,20 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// ✅ Rate Limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests, please try again later.",
+});
+app.use(apiLimiter);
+
 var serviceAccount = require("./surplusshare-bd-firebase-adminsdk.json");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// ✅ Middleware function to verify Firebase ID token
-const verifyToken = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).send({ error: "Unauthorized access (no token)" });
-  }
-
-  const token = authHeader.split(" ")[1];
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    req.user = decoded; // attach user info to req
-    next();
-  } catch (error) {
-    console.error("❌ Token verification failed:", error.message);
-    res.status(401).send({ error: "Unauthorized (invalid token)" });
-  }
-};
 
 // ✅ MongoDB URI & Client Setup
 const uri = process.env.MONGO_URI;
@@ -58,6 +48,66 @@ async function run() {
     const reviewsCollection = db.collection("reviews");
     const charityRoleReqCollection = db.collection("charityRoleRequests");
     const transactionsCollection = db.collection("transactions");
+    const featuredDonationsCollection = db.collection("featuredDonations");
+
+
+    
+// ✅ Middleware function to verify Firebase ID token
+
+const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).send({ error: "Unauthorized access (no token)" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.decoded = decoded; 
+    next();
+  } catch (error) {
+    res.status(401).send({ error: "Unauthorized (invalid token)" });
+  }
+};
+
+//  Admin Verify Middleware
+const adminVerify = async (req, res, next) => {
+  try {
+    const email = req.decoded.email;
+    const user = await userCollection.findOne({ email });
+    if (user?.role !== "admin")
+      return res.status(403).json({ message: "Forbidden access" });
+    next();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Restaurant Verify Middleware
+const restaurantVerify = async (req, res, next) => {
+  try {
+    const email = req.decoded.email;
+    const user = await userCollection.findOne({ email });
+    if (user?.role !== "restaurant")
+      return res.status(403).json({ message: "Forbidden access" });
+    next();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+// charity Verify Middleware
+const charityVerify = async (req, res, next) => {
+  try {
+    const email = req.decoded.email;
+    const user = await userCollection.findOne({ email });
+    if (user?.role !== "charity")
+      return res.status(403).json({ message: "Forbidden access" });
+    next();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
     // ✅ Save or update user on login/register
     app.post("/users", verifyToken, async (req, res) => {
@@ -87,7 +137,7 @@ async function run() {
 
     // ✅ GET: user info use user gmail
     // GET /users/:email
-    app.get("/users/:email", async (req, res) => {
+    app.get("/users/:email",verifyToken, async (req, res) => {
       const email = req.params.email;
       const user = await userCollection.findOne({ email });
 
@@ -233,14 +283,14 @@ async function run() {
     });
     /***********************************Charity role*****************************************************/
     // get the charity role by email
-    app.get("/charity-role/:email", async (req, res) => {
+    app.get("/charity-role/:email",verifyToken,charityVerify, async (req, res) => {
       const email = req.params.email;
       const result = await charityRoleReqCollection.findOne({ email });
       res.send(result || {});
     });
 
     // Post charite role request
-    app.post("/charity-role-requests", async (req, res) => {
+    app.post("/charity-role-requests",verifyToken, async (req, res) => {
       const { email, name, organization, mission, transactionId } = req.body;
 
       if (!email || !organization || !mission || !transactionId) {
@@ -271,7 +321,7 @@ async function run() {
     /*****************************payment************************************/
 
     // post charity payment transactions
-    app.post("/transactions", async (req, res) => {
+    app.post("/transactions",verifyToken, async (req, res) => {
       const { email, amount, transactionId, purpose } = req.body;
 
       if (!email || !transactionId || !amount || !purpose) {
@@ -293,7 +343,7 @@ async function run() {
 
     // get charity payment transactions
 
-    app.post("/create-payment-intent", async (req, res) => {
+    app.post("/create-payment-intent",verifyToken, async (req, res) => {
       const { amount } = req.body;
 
       const paymentIntent = await stripe.paymentIntents.create({
@@ -307,7 +357,7 @@ async function run() {
       });
     });
 
-    app.get("/transactions/:email", async (req, res) => {
+    app.get("/transactions/:email",verifyToken, async (req, res) => {
       const email = req.params.email;
       try {
         const result = await transactionsCollection
@@ -323,7 +373,7 @@ async function run() {
     });
 
     /******************************************Favorites**********************************************/
-    app.get("/favorites/:email", async (req, res) => {
+    app.get("/favorites/:email",verifyToken, async (req, res) => {
       const { email } = req.params;
 
       try {
@@ -363,7 +413,7 @@ async function run() {
     });
 
     // DELETE /favorites/:id
-    app.delete("/favorites/:id", async (req, res) => {
+    app.delete("/favorites/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const result = await favoritesCollection.deleteOne({
         _id: new ObjectId(id),
@@ -372,7 +422,7 @@ async function run() {
     });
 
     // GET /reviews/user/:email**************************************************************************
-    app.get("/reviews/user/:email", async (req, res) => {
+    app.get("/reviews/user/:email",verifyToken, async (req, res) => {
       const email = req.params.email;
       try {
         const reviews = await reviewsCollection
@@ -402,7 +452,7 @@ async function run() {
     });
 
     // DELETE /reviews/:id
-    app.delete("/reviews/:id", async (req, res) => {
+    app.delete("/reviews/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const result = await reviewsCollection.deleteOne({
         _id: new ObjectId(id),
@@ -412,7 +462,7 @@ async function run() {
 
     /**************************************Restorent role****************************************************/
 
-    app.post("/donations", async (req, res) => {
+    app.post("/donations",verifyToken, async (req, res) => {
       try {
         const donation = req.body;
 
@@ -448,7 +498,7 @@ async function run() {
 
     // get my donations
 
-    app.get("/my-donations", async (req, res) => {
+    app.get("/my-donations",verifyToken, restaurantVerify, async (req, res) => {
       try {
         const email = req.query.email;
         const query = email ? { restaurantEmail: email } : {};
@@ -462,7 +512,7 @@ async function run() {
     });
 
     // update my donation
-    app.patch("/my-donations/:id", async (req, res) => {
+    app.patch("/my-donations/:id",verifyToken,restaurantVerify, async (req, res) => {
       const id = req.params.id;
       const updateData = { ...req.body };
       delete updateData._id;
@@ -488,7 +538,7 @@ async function run() {
 
     // delete my donation
 
-    app.delete("/donations/:id", async (req, res) => {
+    app.delete("/donations/:id",verifyToken,restaurantVerify, async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -508,10 +558,9 @@ async function run() {
       }
     });
 
-    app.get("/charity-requests", async (req, res) => {
+    app.get("/charity-requests",verifyToken,restaurantVerify, async (req, res) => {
       try {
         const restaurantEmail = req.query.restaurantEmail;
-        console.log("restaurantEmail:", restaurantEmail);
 
         // Step 1: Get all donations from this restaurant
         const donations = await donationsCollection
@@ -560,7 +609,7 @@ async function run() {
     });
 
     // donation request accept and reject
-    app.patch("/donation-requests/status/:id", async (req, res) => {
+    app.patch("/donation-requests/status/:id",verifyToken,restaurantVerify, async (req, res) => {
       try {
         const requestId = req.params.id;
         const { status } = req.body;
@@ -604,14 +653,14 @@ async function run() {
     /**********************************Charity role***********************************************************************/
 
     // GET /charity-requests/user/:email
-    app.get("/charity-requests/user/:email", async (req, res) => {
+    app.get("/charity-requests/user/:email",verifyToken,charityVerify, async (req, res) => {
       const email = req.params.email;
       console.log("user email: ", email);
       const result = await charityRoleReqCollection.findOne({ email });
       res.send(result || {});
     });
 
-    app.get("/donation-requests/by-charity/:email", async (req, res) => {
+    app.get("/donation-requests/by-charity/:email",verifyToken,charityVerify, async (req, res) => {
       const email = req.params.email;
 
       try {
@@ -662,7 +711,7 @@ async function run() {
     });
 
     // delete donation request
-    app.delete("/donation-requests/:id", async (req, res) => {
+    app.delete("/donation-requests/:id",verifyToken,charityVerify, async (req, res) => {
       const { id } = req.params;
 
       try {
@@ -700,7 +749,7 @@ async function run() {
     });
 
     // get the donation request pickups
-    app.get("/donation-requests/pickups/:email", async (req, res) => {
+    app.get("/donation-requests/pickups/:email",verifyToken,charityVerify, async (req, res) => {
       const email = req.params.email;
 
       try {
@@ -752,7 +801,7 @@ async function run() {
     });
 
     // change the status to confirm pickup
-    app.patch("/donation-requests/confirm-pickup/:id", async (req, res) => {
+    app.patch("/donation-requests/confirm-pickup/:id",verifyToken,charityVerify, async (req, res) => {
       const id = req.params.id;
 
       try {
@@ -791,7 +840,7 @@ async function run() {
     });
 
     // get donation request received
-    app.get("/donation-requests/received/:email", async (req, res) => {
+    app.get("/donation-requests/received/:email",verifyToken,charityVerify, async (req, res) => {
       const email = req.params.email;
 
       try {
@@ -840,36 +889,11 @@ async function run() {
       }
     });
 
-    // post donations reviews
-    app.post("/donations/:id/reviews", async (req, res) => {
-      const { id } = req.params;
-      const { reviewer, description, rating } = req.body;
-
-      if (!reviewer || !description || !rating) {
-        return res.status(400).send({ error: "Missing required fields" });
-      }
-
-      const review = {
-        donationId: new ObjectId(id),
-        reviewer, // { name, email, photoURL }
-        description,
-        rating: parseInt(rating),
-        createdAt: new Date().toISOString(),
-      };
-
-      try {
-        const result = await reviewsCollection.insertOne(review);
-        res.send(result);
-      } catch (err) {
-        res
-          .status(500)
-          .send({ error: "Failed to save review", message: err.message });
-      }
-    });
+  
 
     /**************admin role*****************/
     // get al donations admin
-    app.get("/admin/donations", async (req, res) => {
+    app.get("/admin/donations",verifyToken,adminVerify, async (req, res) => {
       try {
         const result = await donationsCollection.find().toArray();
         res.send(result);
@@ -879,7 +903,7 @@ async function run() {
     });
 
     // update status
-    app.patch("/admin/donations/:id", async (req, res) => {
+    app.patch("/admin/donations/:id",verifyToken,adminVerify, async (req, res) => {
       const id = req.params.id;
       const { status } = req.body;
 
@@ -896,7 +920,7 @@ async function run() {
     });
 
     // get all user
-    app.get("/admin/users", async (req, res) => {
+    app.get("/admin/users",verifyToken,adminVerify, async (req, res) => {
       try {
         const users = await userCollection.find().toArray();
         res.send(users);
@@ -906,7 +930,7 @@ async function run() {
     });
 
     // update user role
-    app.patch("/admin/users/role/:id", async (req, res) => {
+    app.patch("/admin/users/role/:id",verifyToken,adminVerify, async (req, res) => {
       const { id } = req.params;
       const { role } = req.body;
 
@@ -926,7 +950,7 @@ async function run() {
       }
     });
     // delete user form mongodb and firebase
-    app.delete("/admin/users/:id", async (req, res) => {
+    app.delete("/admin/users/:id",verifyToken,adminVerify, async (req, res) => {
       const id = req.params.id;
       const { firebaseUID } = req.query;
 
@@ -948,7 +972,7 @@ async function run() {
       }
     });
     // get charity role request
-    app.get("/admin/charity-role-requests", async (req, res) => {
+    app.get("/admin/charity-role-requests",verifyToken,adminVerify, async (req, res) => {
       try {
         const requests = await charityRoleReqCollection.find().toArray();
         res.send(requests);
@@ -959,7 +983,7 @@ async function run() {
     });
 
     // update charity req accept or reject
-    app.patch("/admin/charity-role-requests/:id", async (req, res) => {
+    app.patch("/admin/charity-role-requests/:id",verifyToken,adminVerify, async (req, res) => {
       const { id } = req.params;
       const { email, status } = req.body;
       console.log("backend data : ", email, status);
@@ -992,7 +1016,7 @@ async function run() {
     });
 
     // delete charity request
-    app.delete("/admin/charity-role-requests/:id", async (req, res) => {
+    app.delete("/admin/charity-role-requests/:id",verifyToken,adminVerify, async (req, res) => {
       const { id } = req.params;
 
       try {
@@ -1008,37 +1032,72 @@ async function run() {
     });
 
     // get  donations Requests
-app.get("/admin/charity-donation-requests", async (req, res) => {
-  try {
-    const requests = await donationRequestsCollection.find().toArray();
-    res.send(requests);
-  } catch (error) {
-    console.error("Failed to fetch donation requests:", error);
-    res.status(500).send({ error: "Internal server error" });
-  }
-});
-
-// delete charity donation request 
-app.delete("/admin/charity-donation-requests/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const result = await donationRequestsCollection.deleteOne({
-      _id: new ObjectId(id),
+    app.get("/admin/charity-donation-requests",verifyToken,adminVerify, async (req, res) => {
+      try {
+        const requests = await donationRequestsCollection.find().toArray();
+        res.send(requests);
+      } catch (error) {
+        console.error("Failed to fetch donation requests:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
     });
 
-    if (result.deletedCount === 0) {
-      return res.status(404).send({ error: "Request not found" });
-    }
+    // delete charity donation request
+    app.delete("/admin/charity-donation-requests/:id",verifyToken,adminVerify, async (req, res) => {
+      const { id } = req.params;
 
-    res.send({ success: true, deletedId: id });
-  } catch (error) {
-    console.error("Failed to delete donation request:", error);
-    res.status(500).send({ error: "Internal server error" });
-  }
-});
+      try {
+        const result = await donationRequestsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
 
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ error: "Request not found" });
+        }
 
+        res.send({ success: true, deletedId: id });
+      } catch (error) {
+        console.error("Failed to delete donation request:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
+    });
+
+    // get the verified donations
+    app.get("/admin/verified-donations", verifyToken,adminVerify, async (req, res) => {
+      try {
+        const verifiedDonations = await donationsCollection
+          .find({ status: "Verified" })
+          .toArray();
+
+        res.send(verifiedDonations);
+      } catch (error) {
+        console.error("Error fetching verified donations:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
+    });
+
+    // post donation to feature-donation
+    app.post("/admin/feature-donation",verifyToken,adminVerify, async (req, res) => {
+      const donation = req.body;
+
+      try {
+        // ✅ Prevent duplicate feature
+        const alreadyFeatured = await featuredDonationsCollection.findOne({
+          _id: donation._id,
+        });
+
+        if (alreadyFeatured) {
+          return res.status(400).send({ error: "Already featured" });
+        }
+
+        // ✅ Insert donation as featured
+        const result = await featuredDonationsCollection.insertOne(donation);
+        res.send({ success: true, insertedId: result.insertedId });
+      } catch (error) {
+        console.error("Error featuring donation:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
+    });
 
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
