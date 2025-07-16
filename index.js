@@ -701,6 +701,41 @@ async function run() {
       }
     );
 
+
+    
+//RestaurantStatistics
+    app.get("/restaurant/stats/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const stats = await donationsCollection.aggregate([
+    { $match: { restaurantEmail: email } },
+    {
+      $group: {
+        _id: { $month: { $toDate: "$createdAt" } },
+        total: { $sum: 1 },
+      },
+    },
+    {
+      $project: {
+        month: {
+          $arrayElemAt: [
+            [
+              "", "January", "February", "March", "April", "May", "June",
+              "July", "August", "September", "October", "November", "December"
+            ],
+            "$_id",
+          ],
+        },
+        total: 1,
+        _id: 0,
+      },
+    },
+    { $sort: { month: 1 } }
+  ]).toArray();
+
+  res.send(stats);
+});
+
     /**********************************Charity role***********************************************************************/
 
     // GET /charity-requests/user/:email
@@ -1226,6 +1261,8 @@ async function run() {
         }
       }
     );
+
+
 
     // ✅ Root route (health check)*******************************************************************************
     app.get("/", (req, res) => {
