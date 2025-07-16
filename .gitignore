@@ -1,3 +1,4 @@
 node_modules
 .env
 surplusshare-bd-firebase-adminsdk.json
+.vercel
