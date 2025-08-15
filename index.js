@@ -1,17 +1,17 @@
 // ✅ Basic Setup
-const express = require("express");
-const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-require("dotenv").config();
-const admin = require("firebase-admin");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const rateLimit = require("express-rate-limit");
-const app = express();
-const port = process.env.PORT || 5000;
+const express = require('express')
+const cors = require('cors')
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
+require('dotenv').config()
+const admin = require('firebase-admin')
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+const rateLimit = require('express-rate-limit')
+const app = express()
+const port = process.env.PORT || 5000
 
 // ✅ Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors())
+app.use(express.json())
 
 // ✅ Rate Limiter
 // const apiLimiter = rateLimit({
@@ -21,17 +21,17 @@ app.use(express.json());
 // });
 // app.use(apiLimiter);
 
-var serviceAccount = require("./surplusshare-bd-firebase-adminsdk.json");
+var serviceAccount = require('./surplusshare-bd-firebase-adminsdk.json')
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-});
+})
 
 // ✅ MongoDB URI & Client Setup
-const uri = process.env.MONGO_URI;
+const uri = process.env.MONGO_URI
 const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
-});
+})
 
 async function run() {
   try {
@@ -39,233 +39,250 @@ async function run() {
     // console.log("✅ MongoDB Connected");
 
     // ✅ DB & Collections
-    const db = client.db("surplusShareDB");
-    const userCollection = db.collection("users");
-    const donationsCollection = db.collection("donations");
-    const favoritesCollection = db.collection("favorites");
-    const donationRequestsCollection = db.collection("donationReq");
-    const reviewsCollection = db.collection("reviews");
-    const charityRoleReqCollection = db.collection("charityRoleRequests");
-    const transactionsCollection = db.collection("transactions");
-    const featuredDonationsCollection = db.collection("featuredDonations");
+    const db = client.db('surplusShareDB')
+    const userCollection = db.collection('users')
+    const donationsCollection = db.collection('donations')
+    const favoritesCollection = db.collection('favorites')
+    const donationRequestsCollection = db.collection('donationReq')
+    const reviewsCollection = db.collection('reviews')
+    const charityRoleReqCollection = db.collection('charityRoleRequests')
+    const transactionsCollection = db.collection('transactions')
+    const featuredDonationsCollection = db.collection('featuredDonations')
 
     // ✅ Middleware function to verify Firebase ID token
 
     const verifyToken = async (req, res, next) => {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith("Bearer ")) {
-        return res
-          .status(401)
-          .send({ error: "Unauthorized access (no token)" });
+      const authHeader = req.headers.authorization
+      if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).send({ error: 'Unauthorized access (no token)' })
       }
 
-      const token = authHeader.split(" ")[1];
+      const token = authHeader.split(' ')[1]
 
       try {
-        const decoded = await admin.auth().verifyIdToken(token);
-        req.decoded = decoded;
-        next();
+        const decoded = await admin.auth().verifyIdToken(token)
+        req.decoded = decoded
+        next()
       } catch (error) {
-        res.status(401).send({ error: "Unauthorized (invalid token)" });
+        res.status(401).send({ error: 'Unauthorized (invalid token)' })
       }
-    };
+    }
 
     //  Admin Verify Middleware
     const adminVerify = async (req, res, next) => {
       try {
-        const email = req.decoded.email;
-        const user = await userCollection.findOne({ email });
-        if (user?.role !== "admin")
-          return res.status(403).json({ message: "Forbidden access" });
-        next();
+        const email = req.decoded.email
+        const user = await userCollection.findOne({ email })
+        if (user?.role !== 'admin')
+          return res.status(403).json({ message: 'Forbidden access' })
+        next()
       } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: err.message })
       }
-    };
+    }
 
     // Restaurant Verify Middleware
     const restaurantVerify = async (req, res, next) => {
       try {
-        const email = req.decoded.email;
-        const user = await userCollection.findOne({ email });
-        if (user?.role !== "restaurant")
-          return res.status(403).json({ message: "Forbidden access" });
-        next();
+        const email = req.decoded.email
+        const user = await userCollection.findOne({ email })
+        if (user?.role !== 'restaurant')
+          return res.status(403).json({ message: 'Forbidden access' })
+        next()
       } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: err.message })
       }
-    };
+    }
     // charity Verify Middleware
     const charityVerify = async (req, res, next) => {
       try {
-        const email = req.decoded.email;
-        const user = await userCollection.findOne({ email });
-        if (user?.role !== "charity")
-          return res.status(403).json({ message: "Forbidden access" });
-        next();
+        const email = req.decoded.email
+        const user = await userCollection.findOne({ email })
+        if (user?.role !== 'charity')
+          return res.status(403).json({ message: 'Forbidden access' })
+        next()
       } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: err.message })
       }
-    };
+    }
 
     // ✅ Save or update user on login/register
-    app.post("/users", verifyToken, async (req, res) => {
-      const { name, email, photoURL, role, firebaseUID } = req.body;
+    app.post('/users', verifyToken, async (req, res) => {
+      const { name, email, photoURL, role, firebaseUID, userDeviceData } =
+        req.body
 
       if (!email) {
-        return res.status(400).send({ error: "Email is required" });
+        return res.status(400).send({ error: 'Email is required' })
       }
 
-      const filter = { email };
+      const filter = { email }
       const update = {
         $setOnInsert: {
           name,
           photoURL,
-          role: role || "user",
+          role: role || 'user',
           firebaseUID,
         },
         $set: {
           lastLoginAt: new Date().toISOString(),
         },
-      };
+        $push: {
+          log_login: {
+            ...userDeviceData,
+            login_at: new Date().toISOString(),
+          },
+        },
+      }
 
-      const options = { upsert: true };
-      const result = await userCollection.updateOne(filter, update, options);
-      res.send(result);
-    });
+      const options = { upsert: true }
+      const result = await userCollection.updateOne(filter, update, options)
+      res.send(result)
+    })
 
     // ✅ GET: user info use user gmail
     // GET /users/:email
-    app.get("/users/:email", verifyToken, async (req, res) => {
-      const email = req.params.email;
-      const user = await userCollection.findOne({ email });
+    app.get('/users/:email', verifyToken, async (req, res) => {
+      const email = req.params.email
+      const user = await userCollection.findOne({ email })
 
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: 'User not found' })
       }
 
-      res.json(user);
-    });
+      res.json(user)
+    })
 
     // ✅ GET: All donations
-    app.get("/donations", verifyToken, async (req, res) => {
-      const result = await donationsCollection.find().toArray();
-      res.send(result);
-    });
+    app.get('/donations', verifyToken, async (req, res) => {
+      const result = await donationsCollection.find().toArray()
+      res.send(result)
+    })
 
     // ✅ GET: Single donation by ID
-    app.get("/donations/:id", verifyToken, async (req, res) => {
-      const id = req.params.id;
+    app.get('/donations/:id', verifyToken, async (req, res) => {
+      const id = req.params.id
       const result = await donationsCollection.findOne({
         _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
+      })
+      res.send(result)
+    })
 
     // ✅ POST: Add to favorites (check if already exists)
-    app.post("/favorites", verifyToken, async (req, res) => {
-      const { donationId, userEmail } = req.body;
+    app.post('/favorites', verifyToken, async (req, res) => {
+      const { donationId, userEmail } = req.body
 
       if (!donationId || !userEmail) {
-        return res.status(400).send({ error: "Missing data" });
+        return res.status(400).send({ error: 'Missing data' })
       }
 
       const existing = await favoritesCollection.findOne({
         donationId,
         userEmail,
-      });
+      })
 
       if (existing) {
-        return res.status(409).send({ message: "Already in favorites" });
+        return res.status(409).send({ message: 'Already in favorites' })
       }
 
       const doc = {
         donationId,
         userEmail,
         addedAt: new Date().toISOString(),
-      };
+      }
 
-      const result = await favoritesCollection.insertOne(doc);
-      res.send(result);
-    });
+      const result = await favoritesCollection.insertOne(doc)
+      res.send(result)
+    })
 
     // ✅ POST: Request for a donation (prevent duplicate requests)
-    app.post("/donation-requests", verifyToken,charityVerify, async (req, res) => {
-      const { donationId, pickupTime, description, charityName, charityEmail } =
-        req.body;
+    app.post(
+      '/donation-requests',
+      verifyToken,
+      charityVerify,
+      async (req, res) => {
+        const {
+          donationId,
+          pickupTime,
+          description,
+          charityName,
+          charityEmail,
+        } = req.body
 
-      // Find the donation by ID to get its title
-      const donation = await donationsCollection.findOne({
-        _id: new ObjectId(donationId),
-      });
+        // Find the donation by ID to get its title
+        const donation = await donationsCollection.findOne({
+          _id: new ObjectId(donationId),
+        })
 
-      if (!donation) {
-        return res.status(404).send({ error: "Donation not found" });
+        if (!donation) {
+          return res.status(404).send({ error: 'Donation not found' })
+        }
+
+        if (
+          !donationId ||
+          !pickupTime ||
+          !description ||
+          !charityName ||
+          !charityEmail
+        ) {
+          return res.status(400).send({ error: 'Missing required fields' })
+        }
+
+        // ❌ Check if request already exists for same donation and user
+        const existingRequest = await donationRequestsCollection.findOne({
+          donationId: new ObjectId(donationId),
+          charityEmail,
+        })
+
+        if (existingRequest) {
+          return res
+            .status(409)
+            .send({ message: 'Already requested this donation' })
+        }
+
+        const request = {
+          donationId: new ObjectId(donationId),
+          pickupTime,
+          description,
+          charityName,
+          charityEmail,
+          status: 'Pending',
+          donationTitle: donation.title,
+          requestedAt: new Date(),
+        }
+
+        const requestResult = await donationRequestsCollection.insertOne(
+          request
+        )
+
+        // Update donation status
+        await donationsCollection.updateOne(
+          { _id: new ObjectId(donationId) },
+          { $set: { status: 'Requested', charityName } }
+        )
+
+        res.send(requestResult)
       }
-
-      if (
-        !donationId ||
-        !pickupTime ||
-        !description ||
-        !charityName ||
-        !charityEmail
-      ) {
-        return res.status(400).send({ error: "Missing required fields" });
-      }
-
-      // ❌ Check if request already exists for same donation and user
-      const existingRequest = await donationRequestsCollection.findOne({
-        donationId: new ObjectId(donationId),
-        charityEmail,
-      });
-
-      if (existingRequest) {
-        return res
-          .status(409)
-          .send({ message: "Already requested this donation" });
-      }
-
-      const request = {
-        donationId: new ObjectId(donationId),
-        pickupTime,
-        description,
-        charityName,
-        charityEmail,
-        status: "Pending",
-        donationTitle: donation.title,
-        requestedAt: new Date(),
-      };
-
-      const requestResult = await donationRequestsCollection.insertOne(request);
-
-      // Update donation status
-      await donationsCollection.updateOne(
-        { _id: new ObjectId(donationId) },
-        { $set: { status: "Requested", charityName } }
-      );
-
-      res.send(requestResult);
-    });
+    )
 
     // ✅ POST: Submit a review (prevent duplicate review per user & donation)
-    app.post("/donations/:id/reviews", async (req, res) => {
-      const { id } = req.params;
-      const { rating, description, reviewerName, reviewerInfo } = req.body;
+    app.post('/donations/:id/reviews', async (req, res) => {
+      const { id } = req.params
+      const { rating, description, reviewerName, reviewerInfo } = req.body
 
       if (!reviewerName || !description || !rating) {
-        return res.status(400).send({ error: "Missing fields" });
+        return res.status(400).send({ error: 'Missing fields' })
       }
 
       // ❌ Check if user already reviewed
       const existingReview = await reviewsCollection.findOne({
         donationId: new ObjectId(id),
         reviewerName,
-      });
+      })
 
       if (existingReview) {
         return res
           .status(409)
-          .send({ message: "You already reviewed this donation" });
+          .send({ message: 'You already reviewed this donation' })
       }
 
       const review = {
@@ -275,37 +292,37 @@ async function run() {
         description,
         rating: parseInt(rating),
         createdAt: new Date().toISOString(),
-      };
+      }
 
-      const result = await reviewsCollection.insertOne(review);
-      res.send(result);
-    });
+      const result = await reviewsCollection.insertOne(review)
+      res.send(result)
+    })
     /***********************************Charity role*****************************************************/
     // get the charity role by email
     app.get(
-      "/charity-role/:email",
+      '/charity-role/:email',
       verifyToken,
-      
+
       async (req, res) => {
-        const email = req.params.email;
-        const result = await charityRoleReqCollection.findOne({ email });
-        res.send(result || {});
+        const email = req.params.email
+        const result = await charityRoleReqCollection.findOne({ email })
+        res.send(result || {})
       }
-    );
+    )
 
     // Post charite role request
-    app.post("/charity-role-requests", verifyToken, async (req, res) => {
-      const { email, name, organization, mission, transactionId } = req.body;
+    app.post('/charity-role-requests', verifyToken, async (req, res) => {
+      const { email, name, organization, mission, transactionId } = req.body
 
       if (!email || !organization || !mission || !transactionId) {
-        return res.status(400).send({ error: "Missing required fields" });
+        return res.status(400).send({ error: 'Missing required fields' })
       }
 
       const existing = await db
-        .collection("charityRoleRequests")
-        .findOne({ email });
-      if (existing && ["pending", "approved"].includes(existing.status)) {
-        return res.status(409).send({ message: "Request already exists" });
+        .collection('charityRoleRequests')
+        .findOne({ email })
+      if (existing && ['pending', 'approved'].includes(existing.status)) {
+        return res.status(409).send({ message: 'Request already exists' })
       }
 
       const doc = {
@@ -314,22 +331,23 @@ async function run() {
         organization,
         mission,
         transactionId,
-        status: "pending",
+        status: 'pending',
         requestedAt: new Date().toISOString(),
-      };
+      }
 
-      const result = await charityRoleReqCollection.insertOne(doc);
-      res.send(result);
-    });
+      const result = await charityRoleReqCollection.insertOne(doc)
+      res.send(result)
+    })
 
     /*****************************payment************************************/
 
     // post charity payment transactions
-    app.post("/transactions", verifyToken, async (req, res) => {
-      const { email, amount, transactionId, purpose,transaction_status } = req.body;
+    app.post('/transactions', verifyToken, async (req, res) => {
+      const { email, amount, transactionId, purpose, transaction_status } =
+        req.body
 
       if (!email || !transactionId || !amount || !purpose) {
-        return res.status(400).send({ error: "Missing transaction data" });
+        return res.status(400).send({ error: 'Missing transaction data' })
       }
 
       const doc = {
@@ -339,46 +357,44 @@ async function run() {
         purpose,
         transaction_status,
         date: new Date().toISOString(),
-      };
+      }
 
-      const result = await db.collection("transactions").insertOne(doc);
-      res.send(result);
-    });
+      const result = await db.collection('transactions').insertOne(doc)
+      res.send(result)
+    })
 
     // get charity payment transactions
 
-    app.post("/create-payment-intent", verifyToken, async (req, res) => {
-      const { amount } = req.body;
+    app.post('/create-payment-intent', verifyToken, async (req, res) => {
+      const { amount } = req.body
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount * 100, // Stripe needs amount in cents
-        currency: "usd",
-        payment_method_types: ["card"],
-      });
+        currency: 'usd',
+        payment_method_types: ['card'],
+      })
 
       res.send({
         clientSecret: paymentIntent.client_secret,
-      });
-    });
+      })
+    })
 
-    app.get("/transactions/:email", verifyToken, async (req, res) => {
-      const email = req.params.email;
+    app.get('/transactions/:email', verifyToken, async (req, res) => {
+      const email = req.params.email
       try {
         const result = await transactionsCollection
           .find({ email })
           .sort({ createdAt: -1 }) // newest first
-          .toArray();
-        res.send(result);
+          .toArray()
+        res.send(result)
       } catch (error) {
-        res
-          .status(500)
-          .send({ message: "Failed to fetch transactions", error });
+        res.status(500).send({ message: 'Failed to fetch transactions', error })
       }
-    });
+    })
 
     /******************************************Favorites**********************************************/
-    app.get("/favorites/:email", verifyToken, async (req, res) => {
-      const { email } = req.params;
+    app.get('/favorites/:email', verifyToken, async (req, res) => {
+      const { email } = req.params
 
       try {
         const favorites = await favoritesCollection
@@ -389,233 +405,227 @@ async function run() {
             // 🧠 Convert string donationId → ObjectId
             {
               $addFields: {
-                donationId: { $toObjectId: "$donationId" },
+                donationId: { $toObjectId: '$donationId' },
               },
             },
             // 🔗 Join with donations collection
             {
               $lookup: {
-                from: "donations",
-                localField: "donationId",
-                foreignField: "_id",
-                as: "donation",
+                from: 'donations',
+                localField: 'donationId',
+                foreignField: '_id',
+                as: 'donation',
               },
             },
             // 🧼 Flatten the joined donation array
             {
-              $unwind: "$donation",
+              $unwind: '$donation',
             },
           ])
-          .toArray();
+          .toArray()
 
-        res.send(favorites);
+        res.send(favorites)
       } catch (error) {
         res
           .status(500)
-          .send({ error: "Failed to fetch favorites", details: error.message });
+          .send({ error: 'Failed to fetch favorites', details: error.message })
       }
-    });
+    })
 
     // DELETE /favorites/:id
-    app.delete("/favorites/:id", verifyToken, async (req, res) => {
-      const id = req.params.id;
+    app.delete('/favorites/:id', verifyToken, async (req, res) => {
+      const id = req.params.id
       const result = await favoritesCollection.deleteOne({
         _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
+      })
+      res.send(result)
+    })
 
     // GET /reviews/user/:email**************************************************************************
-    app.get("/reviews/user/:email", verifyToken, async (req, res) => {
-      const email = req.params.email;
+    app.get('/reviews/user/:email', verifyToken, async (req, res) => {
+      const email = req.params.email
       try {
         const reviews = await reviewsCollection
-          .find({ "reviewerInfo.email": email })
-          .toArray();
+          .find({ 'reviewerInfo.email': email })
+          .toArray()
 
         // Join with donation collection
-        const donationIds = reviews.map((r) => new ObjectId(r.donationId));
+        const donationIds = reviews.map((r) => new ObjectId(r.donationId))
         const donations = await donationsCollection
           .find({ _id: { $in: donationIds } })
-          .toArray();
+          .toArray()
 
         const donationsMap = donations.reduce((acc, donation) => {
-          acc[donation._id.toString()] = donation;
-          return acc;
-        }, {});
+          acc[donation._id.toString()] = donation
+          return acc
+        }, {})
 
         const enrichedReviews = reviews.map((review) => ({
           ...review,
           donation: donationsMap[review.donationId] || {},
-        }));
+        }))
 
-        res.send(enrichedReviews);
+        res.send(enrichedReviews)
       } catch (error) {
-        res.status(500).send({ message: "Failed to fetch reviews", error });
+        res.status(500).send({ message: 'Failed to fetch reviews', error })
       }
-    });
+    })
 
-    // use donation id to get reviews 
-    app.get("/allreviews/donation/:id", async (req, res) => {
-  const donationId = req.params.id;
-  console.log(donationId)
+    // use donation id to get reviews
+    app.get('/allreviews/donation/:id', async (req, res) => {
+      const donationId = req.params.id
+      // console.log(donationId)
 
-  try {
-    const reviews = await reviewsCollection
-      .find({ donationId: new ObjectId(donationId)})
-      .toArray();
-    console.log(reviews)
-    res.send(reviews);
-    
-  } catch (error) {
-    res.status(500).send({ message: "Failed to fetch reviews", error });
-  }
-});
-
+      try {
+        const reviews = await reviewsCollection
+          .find({ donationId: new ObjectId(donationId) })
+          .toArray()
+        // console.log(reviews)
+        res.send(reviews)
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch reviews', error })
+      }
+    })
 
     // DELETE /reviews/:id
-    app.delete("/reviews/:id", verifyToken, async (req, res) => {
-      const id = req.params.id;
+    app.delete('/reviews/:id', verifyToken, async (req, res) => {
+      const id = req.params.id
       const result = await reviewsCollection.deleteOne({
         _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
+      })
+      res.send(result)
+    })
 
     /**************************************Restorent role****************************************************/
 
-    app.post("/donations", verifyToken, async (req, res) => {
+    app.post('/donations', verifyToken, async (req, res) => {
       try {
-        const donation = req.body;
+        const donation = req.body
 
         // Basic validation
         const requiredFields = [
-          "title",
-          "description",
-          "imageUrl",
-          "restaurantName",
-          "restaurantEmail",
-          "location",
-          "quantity",
-          "pickupTime",
-        ];
-        const missing = requiredFields.filter((f) => !donation[f]);
+          'title',
+          'description',
+          'imageUrl',
+          'restaurantName',
+          'restaurantEmail',
+          'location',
+          'quantity',
+          'pickupTime',
+        ]
+        const missing = requiredFields.filter((f) => !donation[f])
         if (missing.length > 0) {
           return res
             .status(400)
-            .send({ message: `Missing fields: ${missing.join(", ")}` });
+            .send({ message: `Missing fields: ${missing.join(', ')}` })
         }
 
-        donation.status = "Pending";
-        donation.createdAt = new Date().toISOString();
+        donation.status = 'Pending'
+        donation.createdAt = new Date().toISOString()
 
-        const result = await donationsCollection.insertOne(donation);
-        res.send({ success: true, insertedId: result.insertedId });
+        const result = await donationsCollection.insertOne(donation)
+        res.send({ success: true, insertedId: result.insertedId })
       } catch (error) {
         res
           .status(500)
-          .send({ success: false, message: "Failed to add donation", error });
+          .send({ success: false, message: 'Failed to add donation', error })
       }
-    });
+    })
 
     // get my donations
 
     app.get(
-      "/my-donations",
+      '/my-donations',
       verifyToken,
       restaurantVerify,
       async (req, res) => {
         try {
-          const email = req.query.email;
-          const query = email ? { restaurantEmail: email } : {};
-          const result = await donationsCollection.find(query).toArray();
-          res.send(result);
+          const email = req.query.email
+          const query = email ? { restaurantEmail: email } : {}
+          const result = await donationsCollection.find(query).toArray()
+          res.send(result)
         } catch (err) {
           res
             .status(500)
-            .send({ message: "Failed to fetch donations", error: err });
+            .send({ message: 'Failed to fetch donations', error: err })
         }
       }
-    );
+    )
 
     // update my donation
     app.patch(
-      "/my-donations/:id",
+      '/my-donations/:id',
       verifyToken,
       restaurantVerify,
       async (req, res) => {
-        const id = req.params.id;
-        const updateData = { ...req.body };
-        delete updateData._id;
+        const id = req.params.id
+        const updateData = { ...req.body }
+        delete updateData._id
         try {
           const result = await donationsCollection.updateOne(
             { _id: new ObjectId(id) },
             { $set: updateData }
-          );
+          )
 
           if (result.modifiedCount > 0) {
             res.send({
               success: true,
-              message: "Donation updated successfully",
-            });
+              message: 'Donation updated successfully',
+            })
           } else {
-            res.send({ success: false, message: "No fields were updated" });
+            res.send({ success: false, message: 'No fields were updated' })
           }
         } catch (error) {
           res.status(500).send({
             success: false,
-            message: "Update failed",
+            message: 'Update failed',
             error: error.message,
-          });
+          })
         }
       }
-    );
+    )
 
     // delete my donation
 
-    app.delete(
-      "/donations/:id",
-      verifyToken,
-      async (req, res) => {
-        try {
-          const id = req.params.id;
-          const query = { _id: new ObjectId(id) };
-          const result = await donationsCollection.deleteOne(query);
+    app.delete('/donations/:id', verifyToken, async (req, res) => {
+      try {
+        const id = req.params.id
+        const query = { _id: new ObjectId(id) }
+        const result = await donationsCollection.deleteOne(query)
 
-          if (result.deletedCount === 1) {
-            res.send({ success: true, message: "Donation deleted" });
-          } else {
-            res
-              .status(404)
-              .send({ success: false, message: "Donation not found" });
-          }
-        } catch (err) {
+        if (result.deletedCount === 1) {
+          res.send({ success: true, message: 'Donation deleted' })
+        } else {
           res
-            .status(500)
-            .send({ success: false, message: "Delete failed", error: err });
+            .status(404)
+            .send({ success: false, message: 'Donation not found' })
         }
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: 'Delete failed', error: err })
       }
-    );
+    })
 
     app.get(
-      "/charity-requests",
+      '/charity-requests',
       verifyToken,
       restaurantVerify,
       async (req, res) => {
         try {
-          const restaurantEmail = req.query.restaurantEmail;
+          const restaurantEmail = req.query.restaurantEmail
 
           // Step 1: Get all donations from this restaurant
           const donations = await donationsCollection
             .find({ restaurantEmail })
-            .toArray();
+            .toArray()
 
           if (!donations.length) {
-            return res.send([]); // No donations found
+            return res.send([]) // No donations found
           }
 
           // Step 2: Extract all donation _ids as ObjectIds
-          const donationIds = donations.map((d) => new ObjectId(d._id));
+          const donationIds = donations.map((d) => new ObjectId(d._id))
 
           // Step 3: Aggregate matching charity requests + lookup donation
           const requests = await donationRequestsCollection
@@ -627,13 +637,13 @@ async function run() {
               },
               {
                 $lookup: {
-                  from: "donations",
-                  localField: "donationId",
-                  foreignField: "_id",
-                  as: "donation",
+                  from: 'donations',
+                  localField: 'donationId',
+                  foreignField: '_id',
+                  as: 'donation',
                 },
               },
-              { $unwind: "$donation" },
+              { $unwind: '$donation' },
 
               // ✅ Step 4: Sort by `requestedAt` field (oldest first)
               {
@@ -642,121 +652,132 @@ async function run() {
                 },
               },
             ])
-            .toArray();
+            .toArray()
 
-          res.send(requests);
+          res.send(requests)
         } catch (error) {
-          console.error("Error fetching charity requests:", error);
-          res.status(500).send({ error: "Internal Server Error" });
+          console.error('Error fetching charity requests:', error)
+          res.status(500).send({ error: 'Internal Server Error' })
         }
       }
-    );
+    )
 
     // donation request accept and reject
     app.patch(
-      "/donation-requests/status/:id",
+      '/donation-requests/status/:id',
       verifyToken,
       restaurantVerify,
       async (req, res) => {
         try {
-          const requestId = req.params.id;
-          const { status } = req.body;
+          const requestId = req.params.id
+          const { status } = req.body
 
-          if (!["Accepted", "Rejected"].includes(status)) {
-            return res.status(400).send({ error: "Invalid status" });
+          if (!['Accepted', 'Rejected'].includes(status)) {
+            return res.status(400).send({ error: 'Invalid status' })
           }
 
           const currentRequest = await donationRequestsCollection.findOne({
             _id: new ObjectId(requestId),
-          });
+          })
 
           if (!currentRequest) {
-            return res.status(404).send({ error: "Request not found" });
+            return res.status(404).send({ error: 'Request not found' })
           }
 
           // Step 1: Update the selected request's status
           await donationRequestsCollection.updateOne(
             { _id: new ObjectId(requestId) },
             { $set: { status } }
-          );
+          )
 
           // Step 2: If accepted, reject all others for the same donation
-          if (status === "Accepted") {
+          if (status === 'Accepted') {
             await donationRequestsCollection.updateMany(
               {
                 donationId: currentRequest.donationId,
                 _id: { $ne: new ObjectId(requestId) },
               },
-              { $set: { status: "Rejected" } }
-            );
+              { $set: { status: 'Rejected' } }
+            )
           }
 
           res.send({
             message: `Request ${status.toLowerCase()} successfully.`,
-          });
+          })
         } catch (error) {
-          console.error("Status change error:", error);
-          res.status(500).send({ error: "Internal Server Error" });
+          console.error('Status change error:', error)
+          res.status(500).send({ error: 'Internal Server Error' })
         }
       }
-    );
+    )
 
+    //RestaurantStatistics
+    app.get('/restaurant/stats/:email', async (req, res) => {
+      const email = req.params.email
 
-    
-//RestaurantStatistics
-    app.get("/restaurant/stats/:email", async (req, res) => {
-  const email = req.params.email;
+      const stats = await donationsCollection
+        .aggregate([
+          { $match: { restaurantEmail: email } },
+          {
+            $group: {
+              _id: { $month: { $toDate: '$createdAt' } },
+              total: { $sum: 1 },
+            },
+          },
+          {
+            $project: {
+              month: {
+                $arrayElemAt: [
+                  [
+                    '',
+                    'January',
+                    'February',
+                    'March',
+                    'April',
+                    'May',
+                    'June',
+                    'July',
+                    'August',
+                    'September',
+                    'October',
+                    'November',
+                    'December',
+                  ],
+                  '$_id',
+                ],
+              },
+              total: 1,
+              _id: 0,
+            },
+          },
+          { $sort: { month: 1 } },
+        ])
+        .toArray()
 
-  const stats = await donationsCollection.aggregate([
-    { $match: { restaurantEmail: email } },
-    {
-      $group: {
-        _id: { $month: { $toDate: "$createdAt" } },
-        total: { $sum: 1 },
-      },
-    },
-    {
-      $project: {
-        month: {
-          $arrayElemAt: [
-            [
-              "", "January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December"
-            ],
-            "$_id",
-          ],
-        },
-        total: 1,
-        _id: 0,
-      },
-    },
-    { $sort: { month: 1 } }
-  ]).toArray();
-
-  res.send(stats);
-});
+      res.send(stats)
+    })
 
     /**********************************Charity role***********************************************************************/
 
     // GET /charity-requests/user/:email
     app.get(
-      "/charity-requests/user/:email",
+      '/charity-requests/user/:email',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const email = req.params.email;
-        console.log("user email: ", email);
-        const result = await charityRoleReqCollection.findOne({ email });
-        res.send(result || {});
+        const email = req.params.email
+        // console.log("user email: ", email);
+        const result = await charityRoleReqCollection.findOne({ email })
+        res.send(result || {})
       }
-    );
+    )
 
     app.get(
-      "/donation-requests/by-charity/:email",
+      '/donation-requests/by-charity/:email',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const email = req.params.email;
+        const email = req.params.email
 
         try {
           const requests = await donationRequestsCollection
@@ -766,19 +787,19 @@ async function run() {
               },
               {
                 $addFields: {
-                  donationId: { $toObjectId: "$donationId" }, // Ensure ObjectId for lookup
+                  donationId: { $toObjectId: '$donationId' }, // Ensure ObjectId for lookup
                 },
               },
               {
                 $lookup: {
-                  from: "donations",
-                  localField: "donationId",
-                  foreignField: "_id",
-                  as: "donation",
+                  from: 'donations',
+                  localField: 'donationId',
+                  foreignField: '_id',
+                  as: 'donation',
                 },
               },
               {
-                $unwind: "$donation",
+                $unwind: '$donation',
               },
               {
                 $project: {
@@ -787,75 +808,75 @@ async function run() {
                   pickupTime: 1,
                   description: 1,
                   requestedAt: 1,
-                  donationTitle: "$donation.title",
-                  restaurantName: "$donation.restaurantName",
-                  foodType: "$donation.foodType",
-                  quantity: "$donation.quantity",
+                  donationTitle: '$donation.title',
+                  restaurantName: '$donation.restaurantName',
+                  foodType: '$donation.foodType',
+                  quantity: '$donation.quantity',
                 },
               },
             ])
-            .toArray();
+            .toArray()
 
-          res.send(requests);
+          res.send(requests)
         } catch (err) {
           res.status(500).send({
-            error: "Failed to fetch donation requests",
+            error: 'Failed to fetch donation requests',
             message: err.message,
-          });
+          })
         }
       }
-    );
+    )
 
     // delete donation request
     app.delete(
-      "/donation-requests/:id",
+      '/donation-requests/:id',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const { id } = req.params;
+        const { id } = req.params
 
         try {
           const request = await donationRequestsCollection.findOne({
             _id: new ObjectId(id),
-          });
+          })
 
           if (!request) {
-            return res.status(404).send({ error: "Request not found" });
+            return res.status(404).send({ error: 'Request not found' })
           }
 
-          if (request.status !== "Pending") {
+          if (request.status !== 'Pending') {
             return res
               .status(400)
-              .send({ error: "Only pending requests can be canceled" });
+              .send({ error: 'Only pending requests can be canceled' })
           }
 
           // Delete the request
           const result = await donationRequestsCollection.deleteOne({
             _id: new ObjectId(id),
-          });
+          })
 
           // Optionally update the donation status back to Available
           await donationsCollection.updateOne(
             { _id: new ObjectId(request.donationId) },
-            { $set: { status: "Available" }, $unset: { charityName: "" } }
-          );
+            { $set: { status: 'Available' }, $unset: { charityName: '' } }
+          )
 
-          res.send({ message: "Request cancelled", result });
+          res.send({ message: 'Request cancelled', result })
         } catch (err) {
           res
             .status(500)
-            .send({ error: "Failed to cancel request", message: err.message });
+            .send({ error: 'Failed to cancel request', message: err.message })
         }
       }
-    );
+    )
 
     // get the donation request pickups
     app.get(
-      "/donation-requests/pickups/:email",
+      '/donation-requests/pickups/:email',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const email = req.params.email;
+        const email = req.params.email
 
         try {
           const pickups = await donationRequestsCollection
@@ -863,103 +884,101 @@ async function run() {
               {
                 $match: {
                   charityEmail: email,
-                  status: "Picked Up",
+                  status: 'Picked Up',
                 },
               },
               {
                 $addFields: {
-                  donationId: { $toObjectId: "$donationId" },
+                  donationId: { $toObjectId: '$donationId' },
                 },
               },
               {
                 $lookup: {
-                  from: "donations",
-                  localField: "donationId",
-                  foreignField: "_id",
-                  as: "donation",
+                  from: 'donations',
+                  localField: 'donationId',
+                  foreignField: '_id',
+                  as: 'donation',
                 },
               },
               {
-                $unwind: "$donation",
+                $unwind: '$donation',
               },
               {
                 $project: {
                   _id: 1,
                   status: 1,
                   pickupTime: 1,
-                  donationTitle: "$donation.title",
-                  foodType: "$donation.foodType",
-                  restaurantName: "$donation.restaurantName",
-                  quantity: "$donation.quantity",
-                  location: "$donation.location",
+                  donationTitle: '$donation.title',
+                  foodType: '$donation.foodType',
+                  restaurantName: '$donation.restaurantName',
+                  quantity: '$donation.quantity',
+                  location: '$donation.location',
                 },
               },
             ])
-            .toArray();
+            .toArray()
 
-          res.send(pickups);
+          res.send(pickups)
         } catch (error) {
           res
             .status(500)
-            .send({ error: "Failed to fetch pickups", message: error.message });
+            .send({ error: 'Failed to fetch pickups', message: error.message })
         }
       }
-    );
+    )
 
     // change the status to confirm pickup
     app.patch(
-      "/donation-requests/confirm-pickup/:id",
+      '/donation-requests/confirm-pickup/:id',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const id = req.params.id;
+        const id = req.params.id
 
         try {
           const request = await donationRequestsCollection.findOne({
             _id: new ObjectId(id),
-          });
+          })
 
           if (!request) {
-            return res.status(404).send({ error: "Request not found" });
+            return res.status(404).send({ error: 'Request not found' })
           }
 
-          if (request.status !== "Accepted") {
+          if (request.status !== 'Accepted') {
             return res
               .status(400)
-              .send({ error: "Only accepted requests can be confirmed" });
+              .send({ error: 'Only accepted requests can be confirmed' })
           }
 
           // ✅ Update request status
           await donationRequestsCollection.updateOne(
             { _id: new ObjectId(id) },
-            { $set: { status: "Picked Up" } }
-          );
+            { $set: { status: 'Picked Up' } }
+          )
 
           // ✅ Also update donation status
           await donationsCollection.updateOne(
             { _id: new ObjectId(request.donationId) },
-            { $set: { status: "Picked Up" } }
-          );
+            { $set: { status: 'Picked Up' } }
+          )
 
-          res.send({ message: "Pickup confirmed" });
+          res.send({ message: 'Pickup confirmed' })
         } catch (error) {
-          res
-            .status(500)
-            .send({
-              error: "Failed to confirm pickup",
-              message: error.message,
-            });
+          res.status(500).send({
+            error: 'Failed to confirm pickup',
+            message: error.message,
+          })
         }
       }
-    );
+    )
 
     // get donation request received
     app.get(
-      "/donation-requests/received/:email",
+      '/donation-requests/received/:email',
       verifyToken,
       charityVerify,
       async (req, res) => {
-        const email = req.params.email;
+        const email = req.params.email
 
         try {
           const donations = await donationRequestsCollection
@@ -967,315 +986,312 @@ async function run() {
               {
                 $match: {
                   charityEmail: email,
-                  status: "Picked Up",
+                  status: 'Picked Up',
                 },
               },
               {
                 $addFields: {
-                  donationId: { $toObjectId: "$donationId" },
+                  donationId: { $toObjectId: '$donationId' },
                 },
               },
               {
                 $lookup: {
-                  from: "donations",
-                  localField: "donationId",
-                  foreignField: "_id",
-                  as: "donation",
+                  from: 'donations',
+                  localField: 'donationId',
+                  foreignField: '_id',
+                  as: 'donation',
                 },
               },
-              { $unwind: "$donation" },
+              { $unwind: '$donation' },
               {
                 $project: {
                   _id: 1,
                   donationId: 1,
-                  donationTitle: "$donation.title",
-                  restaurantName: "$donation.restaurantName",
-                  foodType: "$donation.foodType",
-                  quantity: "$donation.quantity",
-                  pickupTime: "$pickupTime",
+                  donationTitle: '$donation.title',
+                  restaurantName: '$donation.restaurantName',
+                  foodType: '$donation.foodType',
+                  quantity: '$donation.quantity',
+                  pickupTime: '$pickupTime',
                 },
               },
             ])
-            .toArray();
+            .toArray()
 
-          res.send(donations);
+          res.send(donations)
         } catch (error) {
           res.status(500).send({
-            error: "Failed to load received donations",
+            error: 'Failed to load received donations',
             message: error.message,
-          });
+          })
         }
       }
-    );
+    )
 
     /**************admin role*****************/
     // get al donations admin
-    app.get("/admin/donations", verifyToken, adminVerify, async (req, res) => {
+    app.get('/admin/donations', verifyToken, adminVerify, async (req, res) => {
       try {
-        const result = await donationsCollection.find().toArray();
-        res.send(result);
+        const result = await donationsCollection.find().toArray()
+        res.send(result)
       } catch (err) {
-        res.status(500).send({ error: "Failed to load donations" });
+        res.status(500).send({ error: 'Failed to load donations' })
       }
-    });
+    })
 
     // update status
     app.patch(
-      "/admin/donations/:id",
+      '/admin/donations/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const id = req.params.id;
-        const { status } = req.body;
+        const id = req.params.id
+        const { status } = req.body
 
-        if (!["Verified", "Rejected"].includes(status)) {
-          return res.status(400).send({ error: "Invalid status" });
+        if (!['Verified', 'Rejected'].includes(status)) {
+          return res.status(400).send({ error: 'Invalid status' })
         }
 
         const result = await donationsCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: { status } }
-        );
+        )
 
-        res.send(result);
+        res.send(result)
       }
-    );
+    )
 
     // get all user
-    app.get("/admin/users", verifyToken, adminVerify, async (req, res) => {
+    app.get('/admin/users', verifyToken, adminVerify, async (req, res) => {
       try {
-        const users = await userCollection.find().toArray();
-        res.send(users);
+        const users = await userCollection.find().toArray()
+        res.send(users)
       } catch (error) {
-        res.status(500).send({ error: "Failed to fetch users" });
+        res.status(500).send({ error: 'Failed to fetch users' })
       }
-    });
+    })
 
     // update user role
     app.patch(
-      "/admin/users/role/:id",
+      '/admin/users/role/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const { id } = req.params;
-        const { role } = req.body;
+        const { id } = req.params
+        const { role } = req.body
 
-        if (!["admin", "restaurant", "charity", "user"].includes(role)) {
-          return res.status(400).send({ error: "Invalid role" });
+        if (!['admin', 'restaurant', 'charity', 'user'].includes(role)) {
+          return res.status(400).send({ error: 'Invalid role' })
         }
 
         try {
           const result = await userCollection.updateOne(
             { _id: new ObjectId(id) },
             { $set: { role } }
-          );
+          )
 
-          res.send(result);
+          res.send(result)
         } catch (error) {
-          res.status(500).send({ error: "Failed to update role" });
+          res.status(500).send({ error: 'Failed to update role' })
         }
       }
-    );
+    )
     // delete user form mongodb and firebase
     app.delete(
-      "/admin/users/:id",
+      '/admin/users/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const id = req.params.id;
-        const { firebaseUID } = req.query;
+        const id = req.params.id
+        const { firebaseUID } = req.query
 
         try {
           // 1. Delete from MongoDB
           const mongoResult = await userCollection.deleteOne({
             _id: new ObjectId(id),
-          });
+          })
 
           // 2. Delete from Firebase Auth
           if (firebaseUID) {
-            await admin.auth().deleteUser(firebaseUID);
+            await admin.auth().deleteUser(firebaseUID)
           }
 
-          res.send({ success: true, mongoDeleted: mongoResult.deletedCount });
+          res.send({ success: true, mongoDeleted: mongoResult.deletedCount })
         } catch (error) {
-          console.error("Delete user error:", error);
-          res.status(500).send({ error: "Failed to delete user" });
+          console.error('Delete user error:', error)
+          res.status(500).send({ error: 'Failed to delete user' })
         }
       }
-    );
+    )
     // get charity role request
     app.get(
-      "/admin/charity-role-requests",
+      '/admin/charity-role-requests',
       verifyToken,
       adminVerify,
       async (req, res) => {
         try {
-          const requests = await charityRoleReqCollection.find().toArray();
-          res.send(requests);
+          const requests = await charityRoleReqCollection.find().toArray()
+          res.send(requests)
         } catch (error) {
-          console.error("Failed to fetch charity role requests:", error);
-          res.status(500).send({ error: "Internal server error" });
+          console.error('Failed to fetch charity role requests:', error)
+          res.status(500).send({ error: 'Internal server error' })
         }
       }
-    );
+    )
 
     // update charity req accept or reject
     app.patch(
-      "/admin/charity-role-requests/:id",
+      '/admin/charity-role-requests/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const { id } = req.params;
-        const { email, status } = req.body;
-        console.log("backend data : ", email, status);
+        const { id } = req.params
+        const { email, status } = req.body
+        // console.log("backend data : ", email, status);
 
         try {
           // 1. Update the status of the role request
           const updateRequest = await charityRoleReqCollection.updateOne(
             { _id: new ObjectId(id) },
             { $set: { status } }
-          );
+          )
 
           // 2. If approved, update user's role to "charity"
-          let updateUser = null;
-          if (status === "Approved") {
+          let updateUser = null
+          if (status === 'Approved') {
             updateUser = await userCollection.updateOne(
               { email },
-              { $set: { role: "charity" } }
-            );
+              { $set: { role: 'charity' } }
+            )
           }
 
           res.send({
             success: true,
             updatedRequest: updateRequest.modifiedCount,
             updatedUser: updateUser?.modifiedCount || 0,
-          });
+          })
         } catch (error) {
-          console.error("Failed to update role request:", error);
-          res.status(500).send({ error: "Internal server error" });
+          console.error('Failed to update role request:', error)
+          res.status(500).send({ error: 'Internal server error' })
         }
       }
-    );
+    )
 
     // delete charity request
     app.delete(
-      "/admin/charity-role-requests/:id",
+      '/admin/charity-role-requests/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const { id } = req.params;
+        const { id } = req.params
 
         try {
           const result = await charityRoleReqCollection.deleteOne({
             _id: new ObjectId(id),
-          });
+          })
 
-          res.send({ success: true, deletedCount: result.deletedCount });
+          res.send({ success: true, deletedCount: result.deletedCount })
         } catch (error) {
-          console.error("Failed to delete role request:", error);
-          res.status(500).send({ error: "Failed to delete role request" });
+          console.error('Failed to delete role request:', error)
+          res.status(500).send({ error: 'Failed to delete role request' })
         }
       }
-    );
+    )
 
     // get  donations Requests
     app.get(
-      "/admin/charity-donation-requests",
+      '/admin/charity-donation-requests',
       verifyToken,
       adminVerify,
       async (req, res) => {
         try {
-          const requests = await donationRequestsCollection.find().toArray();
-          res.send(requests);
+          const requests = await donationRequestsCollection.find().toArray()
+          res.send(requests)
         } catch (error) {
-          console.error("Failed to fetch donation requests:", error);
-          res.status(500).send({ error: "Internal server error" });
+          console.error('Failed to fetch donation requests:', error)
+          res.status(500).send({ error: 'Internal server error' })
         }
       }
-    );
+    )
 
     // delete charity donation request
     app.delete(
-      "/admin/charity-donation-requests/:id",
+      '/admin/charity-donation-requests/:id',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const { id } = req.params;
+        const { id } = req.params
 
         try {
           const result = await donationRequestsCollection.deleteOne({
             _id: new ObjectId(id),
-          });
+          })
 
           if (result.deletedCount === 0) {
-            return res.status(404).send({ error: "Request not found" });
+            return res.status(404).send({ error: 'Request not found' })
           }
 
-          res.send({ success: true, deletedId: id });
+          res.send({ success: true, deletedId: id })
         } catch (error) {
-          console.error("Failed to delete donation request:", error);
-          res.status(500).send({ error: "Internal server error" });
+          console.error('Failed to delete donation request:', error)
+          res.status(500).send({ error: 'Internal server error' })
         }
       }
-    );
+    )
 
     // get the verified donations
-   app.get("/admin/verified-donations", verifyToken, async (req, res) => {
-  try {
-    const donations = await donationsCollection
-      .find({ status: { $in: ["Verified", "Requested"] } }) // only include these
-      .toArray();
+    app.get('/admin/verified-donations', verifyToken, async (req, res) => {
+      try {
+        const donations = await donationsCollection
+          .find({ status: { $in: ['Verified', 'Requested'] } }) // only include these
+          .toArray()
 
-    res.send(donations);
-  } catch (error) {
-    console.error("Error fetching filtered donations:", error);
-    res.status(500).send({ error: "Internal server error" });
-  }
-});
-
+        res.send(donations)
+      } catch (error) {
+        console.error('Error fetching filtered donations:', error)
+        res.status(500).send({ error: 'Internal server error' })
+      }
+    })
 
     // post donation to feature-donation
     app.post(
-      "/admin/feature-donation",
+      '/admin/feature-donation',
       verifyToken,
       adminVerify,
       async (req, res) => {
-        const donation = req.body;
+        const donation = req.body
 
         try {
           // ✅ Prevent duplicate feature
           const alreadyFeatured = await featuredDonationsCollection.findOne({
             _id: donation._id,
-          });
+          })
 
           if (alreadyFeatured) {
-            return res.status(400).send({ error: "Already featured" });
+            return res.status(400).send({ error: 'Already featured' })
           }
 
           // ✅ Insert donation as featured
-          const result = await featuredDonationsCollection.insertOne(donation);
-          res.send({ success: true, insertedId: result.insertedId });
+          const result = await featuredDonationsCollection.insertOne(donation)
+          res.send({ success: true, insertedId: result.insertedId })
         } catch (error) {
-          console.error("Error featuring donation:", error);
-          res.status(500).send({ error: "Internal server error" });
+          console.error('Error featuring donation:', error)
+          res.status(500).send({ error: 'Internal server error' })
         }
       }
-    );
-
-
+    )
 
     // ✅ Root route (health check)*******************************************************************************
-    app.get("/", (req, res) => {
-      res.send("🚀 SurplusShare API is Running (MongoDB Native)");
-    });
+    app.get('/', (req, res) => {
+      res.send('🚀 SurplusShare API is Running (MongoDB Native)')
+    })
   } catch (error) {
-    console.error("❌ Server error:", error);
+    console.error('❌ Server error:', error)
   }
 }
 
-run().catch(console.dir);
+run().catch(console.dir)
 
 // ✅ Start server
 app.listen(port, () => {
-  console.log(`🚀 Server is running on port ${port}`);
-});
+  // console.log(`🚀 Server is running on port ${port}`);
+})
