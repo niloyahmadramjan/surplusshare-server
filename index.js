@@ -884,7 +884,7 @@ async function run() {
               {
                 $match: {
                   charityEmail: email,
-                  status: 'Picked Up',
+                  status: 'Accepted',
                 },
               },
               {
